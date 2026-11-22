@@ -19,18 +19,83 @@ st.set_page_config(page_title="Пазарен радар", page_icon="📈", lay
 # ---------------------------------------------------------------
 # 1. Активи по подразбиране (може да добавяш свои в страничното меню)
 # ---------------------------------------------------------------
-DEFAULT_ASSETS = {
-    "S&P 500 (SPY)": "SPY",
-    "Nasdaq 100 (QQQ)": "QQQ",
-    "Световни акции (VT)": "VT",
-    "Европейски акции (VGK)": "VGK",
-    "Злато (GLD)": "GLD",
-    "Облигации САЩ 20+ г. (TLT)": "TLT",
-    "Apple": "AAPL",
-    "Microsoft": "MSFT",
-    "NVIDIA": "NVDA",
-    "Bitcoin": "BTC-USD",
+ASSET_GROUPS = {
+    "Индекси САЩ": {
+        "S&P 500 (SPY)": "SPY",
+        "Nasdaq 100 (QQQ)": "QQQ",
+        "Dow Jones (DIA)": "DIA",
+        "Малки компании (IWM)": "IWM",
+    },
+    "Световни пазари": {
+        "Целият свят (VT)": "VT",
+        "Европа (VGK)": "VGK",
+        "Развиващи се пазари (EEM)": "EEM",
+        "Япония (EWJ)": "EWJ",
+        "Китай (FXI)": "FXI",
+        "Индия (INDA)": "INDA",
+    },
+    "Сектори САЩ": {
+        "Технологии (XLK)": "XLK",
+        "Финанси (XLF)": "XLF",
+        "Енергетика (XLE)": "XLE",
+        "Здравеопазване (XLV)": "XLV",
+        "Индустрия (XLI)": "XLI",
+        "Потребителски стоки (XLY)": "XLY",
+        "Основни стоки (XLP)": "XLP",
+        "Комунални услуги (XLU)": "XLU",
+        "Недвижими имоти (XLRE)": "XLRE",
+        "Материали (XLB)": "XLB",
+        "Комуникации (XLC)": "XLC",
+    },
+    "Теми и мегатрендове": {
+        "Полупроводници (SMH)": "SMH",
+        "Роботика и ИИ (BOTZ)": "BOTZ",
+        "Киберсигурност (CIBR)": "CIBR",
+        "Чиста енергия (ICLN)": "ICLN",
+        "Отбрана и авиация (ITA)": "ITA",
+        "Уран (URA)": "URA",
+        "Литий и батерии (LIT)": "LIT",
+    },
+    "Големи технологични акции": {
+        "Apple": "AAPL",
+        "Microsoft": "MSFT",
+        "NVIDIA": "NVDA",
+        "Alphabet": "GOOGL",
+        "Amazon": "AMZN",
+        "Meta": "META",
+        "Tesla": "TSLA",
+    },
+    "Европейски акции": {
+        "ASML": "ASML",
+        "SAP": "SAP",
+        "Novo Nordisk": "NVO",
+    },
+    "Облигации": {
+        "САЩ 20+ г. (TLT)": "TLT",
+        "САЩ 7-10 г. (IEF)": "IEF",
+        "САЩ 1-3 г. (SHY)": "SHY",
+        "Корпоративни (LQD)": "LQD",
+        "Високодоходни (HYG)": "HYG",
+    },
+    "Суровини": {
+        "Злато (GLD)": "GLD",
+        "Сребро (SLV)": "SLV",
+        "Петрол (USO)": "USO",
+        "Мед (CPER)": "CPER",
+        "Земеделие (DBA)": "DBA",
+    },
+    "Крипто": {
+        "Bitcoin": "BTC-USD",
+        "Ethereum": "ETH-USD",
+        "Solana": "SOL-USD",
+    },
 }
+# Само за тези категории има смисъл да питаме за препоръки на анализатори
+STOCK_CATEGORIES = {"Големи технологични акции", "Европейски акции"}
+
+# Плоски речници за удобство: име → тикер, име → категория
+DEFAULT_ASSETS = {n: t for g in ASSET_GROUPS.values() for n, t in g.items()}
+CATEGORY_OF = {n: cat for cat, g in ASSET_GROUPS.items() for n in g}
 
 
 # ---------------------------------------------------------------
@@ -63,6 +128,24 @@ def load_analysts(ticker: str) -> dict:
     except Exception:
         pass
     return out
+
+
+@st.cache_data(ttl=24 * 3600)
+def guess_category(ticker: str) -> str:
+    """Автоматична категория за тикери, добавени ръчно.
+    Пример: 'AMZN' → 'Свои: акция · Consumer Cyclical', 'ETH-USD' → 'Свои: крипто'."""
+    if ticker.endswith("-USD"):
+        return "Свои: крипто"
+    try:
+        info = yf.Ticker(ticker).info
+    except Exception:
+        return "Свои: друго"
+    kind = info.get("quoteType", "")
+    if kind == "EQUITY":
+        return f"Свои: акция · {info.get('sector', 'без сектор')}"
+    if kind == "ETF":
+        return f"Свои: ETF · {info.get('category') or 'без категория'}"
+    return "Свои: друго"
 
 
 # ---------------------------------------------------------------
@@ -139,13 +222,19 @@ st.caption("Информативен инструмент. Не е инвест�
 
 with st.sidebar:
     st.header("Настройки")
-    chosen = st.multiselect("Активи", list(DEFAULT_ASSETS), default=list(DEFAULT_ASSETS)[:6])
-    custom = st.text_input("Добави тикери (със запетая)", placeholder="напр. AMZN, ASML, ETH-USD")
+    cats = st.multiselect("Категории", list(ASSET_GROUPS),
+                          default=["Индекси САЩ", "Сектори САЩ", "Суровини"])
+    pool = [n for c in cats for n in ASSET_GROUPS[c]]
+    chosen = st.multiselect("Активи (махни тези, които не искаш)", pool, default=pool)
+    custom = st.text_input("Добави тикери (със запетая)", placeholder="напр. KO, JPM, VNQ, DOGE-USD")
     period = st.selectbox("Период", ["1y", "2y", "5y"], index=1)
+    st.caption(f"Общо налични: {len(DEFAULT_ASSETS)} актива в {len(ASSET_GROUPS)} категории. "
+               "Много активи = по-бавно първо зареждане (после се кешира).")
 
 tickers = {name: DEFAULT_ASSETS[name] for name in chosen}
 for t in [x.strip().upper() for x in custom.split(",") if x.strip()]:
     tickers[t] = t
+    CATEGORY_OF[t] = guess_category(t)
 
 if not tickers:
     st.info("Избери поне един актив от страничното меню.")
@@ -162,15 +251,42 @@ with st.spinner("Зареждам данни..."):
             st.warning(f"Няма достатъчно данни за {t}.")
             continue
         m = trend_metrics(df)
-        an = analyst_score(load_analysts(t)["summary"])
+        cat = CATEGORY_OF.get(name, "Свои: друго")
+        wants_analysts = cat in STOCK_CATEGORIES or cat.startswith("Свои: акция")
+        an = analyst_score(load_analysts(t)["summary"]) if wants_analysts else None
         ts = trend_score(m)
         cache[name] = (t, df, m)
-        rows.append({"Актив": name, **{k: m[k] for k in ["Цена", "RSI", "1М %", "3М %", "1Г %", "Волатилност %", "Макс. спад %"]},
+        rows.append({"Категория": cat, "Актив": name, **{k: m[k] for k in ["Цена", "RSI", "1М %", "3М %", "1Г %", "Волатилност %", "Макс. спад %"]},
                      "Тренд (−3…+3)": ts, "Анализатори (−2…+2)": an, "Сигнал": verdict(ts, an)})
 
 with tab_overview:
     if rows:
         table = pd.DataFrame(rows).sort_values("Тренд (−3…+3)", ascending=False)
+        table.insert(2, "Клас", pd.cut(table["Тренд (−3…+3)"], bins=[-10, -1.5, 1.4, 10],
+                                       labels=["🔴 Низходящ", "🟡 Неясен", "🟢 Възходящ"]).astype(str))
+
+        # --- Обобщение по категории: кои части на пазара вървят нагоре ---
+        st.subheader("По категории")
+        by_cat = (table.groupby("Категория")
+                       .agg(Брой=("Актив", "count"),
+                            Среден_тренд=("Тренд (−3…+3)", "mean"),
+                            Средно_3М=("3М %", "mean"),
+                            Възходящи=("Клас", lambda s: (s == "🟢 Възходящ").sum()))
+                       .sort_values("Среден_тренд", ascending=False)
+                       .reset_index())
+        c1, c2 = st.columns([3, 2])
+        c1.dataframe(by_cat.style.format(precision=2), use_container_width=True, hide_index=True)
+        fig_cat = go.Figure(go.Bar(x=by_cat["Среден_тренд"], y=by_cat["Категория"], orientation="h",
+                                   marker_color=["#2e9e5b" if v > 0 else "#d64545" for v in by_cat["Среден_тренд"]]))
+        fig_cat.update_layout(height=60 + 30 * len(by_cat), margin=dict(l=10, r=10, t=10, b=10),
+                              yaxis=dict(autorange="reversed"), xaxis_title="Среден тренд")
+        c2.plotly_chart(fig_cat, use_container_width=True)
+
+        # --- Филтър по клас и пълната таблица ---
+        st.subheader("Всички активи")
+        show = st.multiselect("Покажи класове", ["🟢 Възходящ", "🟡 Неясен", "🔴 Низходящ"],
+                              default=["🟢 Възходящ", "🟡 Неясен", "🔴 Низходящ"])
+        table = table[table["Клас"].isin(show)]
         st.dataframe(
             table.style.format(precision=2, na_rep="—")
                  .background_gradient(subset=["Тренд (−3…+3)"], cmap="RdYlGn", vmin=-3, vmax=3),
