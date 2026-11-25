@@ -89,9 +89,40 @@ ASSET_GROUPS = {
         "Ethereum": "ETH-USD",
         "Solana": "SOL-USD",
     },
+    "Дивидентни ETF": {
+        "Растящи дивиденти (VIG)": "VIG",
+        "Висок дивидент (VYM)": "VYM",
+        "Качествени дивиденти (SCHD)": "SCHD",
+        "Дивидентни аристократи (NOBL)": "NOBL",
+        "Международни дивиденти (VYMI)": "VYMI",
+    },
+    "Дивидентни акции": {
+        "Coca-Cola": "KO",
+        "PepsiCo": "PEP",
+        "Johnson & Johnson": "JNJ",
+        "Procter & Gamble": "PG",
+        "McDonald's": "MCD",
+        "AbbVie": "ABBV",
+        "Realty Income": "O",
+        "Verizon": "VZ",
+        "Exxon Mobil": "XOM",
+    },
+    "Банки": {
+        "Банки САЩ (KBE)": "KBE",
+        "Регионални банки САЩ (KRE)": "KRE",
+        "Европейски банки (EUFN)": "EUFN",
+        "JPMorgan Chase": "JPM",
+        "Bank of America": "BAC",
+        "Goldman Sachs": "GS",
+        "Morgan Stanley": "MS",
+        "HSBC": "HSBC",
+        "Santander": "SAN",
+        "ING": "ING",
+        "UBS": "UBS",
+    },
 }
 # Само за тези категории има смисъл да питаме за препоръки на анализатори
-STOCK_CATEGORIES = {"Големи технологични акции", "Европейски акции"}
+STOCK_CATEGORIES = {"Големи технологични акции", "Европейски акции", "Дивидентни акции", "Банки"}
 
 # Плоски речници за удобство: име → тикер, име → категория
 DEFAULT_ASSETS = {n: t for g in ASSET_GROUPS.values() for n, t in g.items()}
