@@ -162,6 +162,21 @@ def load_analysts(ticker: str) -> dict:
 
 
 @st.cache_data(ttl=24 * 3600)
+def dividend_yield(ticker: str, price: float) -> float:
+    """Дивидентна доходност за последните 12 месеца, в %.
+    Пример: KO е платила 4 × 0.51 = 2.04 $ за година при цена 70 $ → 2.9%.
+    Връща 0 за активи без дивиденти (напр. NVDA почти 0, крипто 0)."""
+    try:
+        d = yf.Ticker(ticker).dividends
+    except Exception:
+        return np.nan
+    if d is None or d.empty:
+        return 0.0
+    since = pd.Timestamp.now(tz=d.index.tz) - pd.Timedelta(days=365)
+    return float(d[d.index >= since].sum()) / price * 100
+
+
+@st.cache_data(ttl=24 * 3600)
 def guess_category(ticker: str) -> str:
     """Автоматична категория за тикери, добавени ръчно.
     Пример: 'AMZN' → 'Свои: акция · Consumer Cyclical', 'ETH-USD' → 'Свои: крипто'."""
@@ -287,7 +302,9 @@ with st.spinner("Зареждам данни..."):
         an = analyst_score(load_analysts(t)["summary"]) if wants_analysts else None
         ts = trend_score(m)
         cache[name] = (t, df, m)
-        rows.append({"Категория": cat, "Актив": name, **{k: m[k] for k in ["Цена", "RSI", "1М %", "3М %", "1Г %", "Волатилност %", "Макс. спад %"]},
+        divy = 0.0 if t.endswith("-USD") else dividend_yield(t, m["Цена"])
+        rows.append({"Категория": cat, "Актив": name, "Цена": m["Цена"], "Дивидент %": divy,
+                     **{k: m[k] for k in ["RSI", "1М %", "3М %", "1Г %", "Волатилност %", "Макс. спад %"]},
                      "Тренд (−3…+3)": ts, "Анализатори (−2…+2)": an, "Сигнал": verdict(ts, an)})
 
 with tab_overview:
@@ -302,6 +319,7 @@ with tab_overview:
                        .agg(Брой=("Актив", "count"),
                             Среден_тренд=("Тренд (−3…+3)", "mean"),
                             Средно_3М=("3М %", "mean"),
+                            Среден_дивидент=("Дивидент %", "mean"),
                             Възходящи=("Клас", lambda s: (s == "🟢 Възходящ").sum()))
                        .sort_values("Среден_тренд", ascending=False)
                        .reset_index())
@@ -320,9 +338,12 @@ with tab_overview:
         table = table[table["Клас"].isin(show)]
         st.dataframe(
             table.style.format(precision=2, na_rep="—")
-                 .background_gradient(subset=["Тренд (−3…+3)"], cmap="RdYlGn", vmin=-3, vmax=3),
+                 .background_gradient(subset=["Тренд (−3…+3)"], cmap="RdYlGn", vmin=-3, vmax=3)
+                 .background_gradient(subset=["Дивидент %"], cmap="Blues", vmin=0, vmax=8),
             use_container_width=True, hide_index=True,
         )
+        st.caption("Дивидент % = изплатените дивиденти за последните 12 месеца ÷ текущата цена. "
+                   "Кликни върху заглавие на колона, за да сортираш по нея.")
 
 # --- Детайли: графика, метрики, анализатори, новини ---
 with tab_detail:
@@ -375,6 +396,11 @@ with tab_help:
 
 **Анализатори (−2…+2)** е средна оценка от препоръките: силно купувай = +2, купувай = +1,
 задръж = 0, продавай = −1, силно продавай = −2.
+
+**Дивидент %** показва колко пари в брой носи активът годишно спрямо цената му.
+Пример: при 2.9% и инвестиция 1000 $ получаваш около 29 $ годишно (преди данъци).
+Много висок дивидент (над 7–8%) понякога е предупреждение: цената е паднала, защото
+пазарът очаква дивидентът да бъде намален.
 
 **Ограничения:** трендовете описват миналото и не гарантират бъдещето; анализаторите
 исторически са склонни към оптимизъм; високата волатилност и големият макс. спад
